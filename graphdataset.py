@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import networkx as nx
 
+ROLLING_AVG_COUNT = 5
+
 
 class GraphDataset(Dataset):
     labels = ["normal", "anomalous"]
@@ -34,6 +36,15 @@ class GraphDataset(Dataset):
         "n_tcp",
         "n_udp",
         "n_icmp",
+        "rolling_dropped",
+        "rolling_accepted",
+        "last_intersect_node_count",
+        "last_intersect_edge_count",
+        "degree_assortivity_coefficient",
+        "bridge_count",
+        "is_chordal",
+        "triangle_count",
+        "is_connected",
     ]
 
     def __init__(self, traffic_file):
@@ -42,15 +53,20 @@ class GraphDataset(Dataset):
         self.graphs = dict()
         self.graph_df = pd.DataFrame(None, columns=self.graph_df_columns)
         self.features_df = pd.DataFrame(None, columns=self.features_df_columns)
+        
 
         with open(self.traffic_file, "r") as f:
             # while True:
-            for i in range(30000):
+            parse_count = 10000
+            for i in range(parse_count):
+                if i % 5000 == 0:
+                    print(f'parsing: {i}/{parse_count}')
 
                 line = f.readline()
                 if not line:
                     break
                 line = line.rstrip()
+                
 
                 self._add_to_graph(line)
                 self._add_to_dataframe(line)
@@ -62,11 +78,11 @@ class GraphDataset(Dataset):
 
     def __getitem__(self, idx):
         graph = self.graphs[idx]
-        label = self.get_label(graph)
+        label = 0 # self.get_label(graph)
         return graph, label
 
     def _add_to_graph(self, line):
-        time = line.split(",")[0]
+        time = line.split(",")[1]
         time = dt.strptime(time, self.input_time_format)
 
         timeframe = self._get_timeframe(time, 30)  # 30 seconds
@@ -81,6 +97,7 @@ class GraphDataset(Dataset):
 
     def _generate_features(self):
         timeframes = self.graph_df["timeframe"].unique()
+        print(f'{timeframes}')
 
         for timeframe in timeframes:
             curr_graph = self.graph_df.loc[self.graph_df["timeframe"] == timeframe]
@@ -101,7 +118,6 @@ class GraphDataset(Dataset):
             unique_dst_ports.update(curr_graph["dst_port"].unique())
             n_unique_dst_ports = len(unique_dst_ports)
 
-
             # number of accepted connections
             accepted = curr_graph.loc[curr_graph["action"] == "accept"]
             n_accepted = len(accepted)
@@ -110,7 +126,7 @@ class GraphDataset(Dataset):
             dropped = curr_graph.loc[curr_graph["action"] == "drop"]
             n_dropped = len(dropped)
 
-            # number of dropped connections
+            # number of connections
             connections = curr_graph
             n_connections = len(connections)
 
@@ -130,6 +146,69 @@ class GraphDataset(Dataset):
             icmps = curr_graph.loc[curr_graph["protocol"] == "icmp"]
             n_icmps = len(icmps)
 
+            # rolling avg of dropped connections
+            lower_bound = timeframe-ROLLING_AVG_COUNT if timeframe-ROLLING_AVG_COUNT > 0 else 0
+            upper_bound = timeframe
+
+            dropped_sum = 0
+            for i in range(lower_bound,  upper_bound):
+                curr_n_dropped = int(self.features_df.iloc[i]["n_dropped"])
+                dropped_sum += curr_n_dropped
+
+            rolling_range = upper_bound - lower_bound
+            if rolling_range != 0:
+                rolling_dropped = dropped_sum / rolling_range
+            else:
+                rolling_dropped = 0
+
+            # rolling avg of accepted connections
+            lower_bound = timeframe-ROLLING_AVG_COUNT if timeframe-ROLLING_AVG_COUNT > 0 else 0
+            upper_bound = timeframe
+
+            accepted_sum = 0
+            for i in range(lower_bound,  upper_bound):
+                curr_n_accepted = int(self.features_df.iloc[i]["n_accepted"])
+                accepted_sum += curr_n_accepted
+
+            rolling_range = upper_bound - lower_bound
+            if rolling_range != 0:
+                rolling_accepted = dropped_sum / rolling_range
+            else:
+                rolling_accepted = 0
+
+            # intersection between this and last graph
+            if timeframe == 0:
+                last = nx.Graph()
+            else:
+                last = self.graphs[timeframe - 1]
+            curr = self.graphs[timeframe]
+
+            intersect = nx.intersection(last, curr)
+
+            last_intersect_node_count = len(intersect.nodes)
+            last_intersect_edge_count = len(intersect.edges)
+
+            # assortivity coefficient
+            curr = self.graphs[timeframe]
+            degree_assortivity_coefficient = nx.degree_assortativity_coefficient(curr)
+
+            # bridge count
+            curr = self.graphs[timeframe]
+            bridge_count = len(list(nx.bridges(curr)))
+
+            # is chordal
+            curr = self.graphs[timeframe]
+            is_chordal = float(nx.is_chordal(curr))
+
+            # bridge count
+            curr = self.graphs[timeframe]
+            triangle_count = len(list(nx.triangles(curr)))
+
+            # is connected
+            curr = self.graphs[timeframe]
+            is_connected = float(nx.is_connected(curr))
+
+
             row = [
                 timeframe,
                 n_unique_ips,
@@ -143,11 +222,20 @@ class GraphDataset(Dataset):
                 n_udps,
                 n_tcps,
                 n_icmps,
+                rolling_dropped,
+                rolling_accepted,
+                last_intersect_node_count,
+                last_intersect_edge_count,
+                degree_assortivity_coefficient,
+                bridge_count,
+                is_chordal,
+                triangle_count,
+                is_connected,
             ]
             self.features_df.loc[len(self.features_df.index)] = row
 
     def _add_to_dataframe(self, line):
-        time = line.split(",")[0]
+        time = line.split(",")[1]
         time = dt.strptime(time, self.input_time_format)
 
         timeframe = self._get_timeframe(time, 30)  # 30 seconds
@@ -170,22 +258,22 @@ class GraphDataset(Dataset):
         return second_of_day % second_range
 
     def _get_source_ip(self, line):
-        return line.split(",")[1]
-
-    def _get_source_port(self, line):
         return line.split(",")[2]
 
+    def _get_source_port(self, line):
+        return line.split(",")[3]
+
     def _get_destination_ip(self, line):
-        return line.split(",")[8]
+        return line.split(",")[4]
 
     def _get_destination_port(self, line):
-        return line.split(",")[9]
+        return line.split(",")[5]
 
     def _get_protocol(self, line):
-        return line.split(",")[15]
+        return line.split(",")[6]
 
     def _get_action(self, line):
-        return line.split(",")[16]
+        return line.split(",")[8]
 
     def _split_public_private(self, ips):
         public, private = [], []
@@ -197,10 +285,8 @@ class GraphDataset(Dataset):
 
         return public, private
 
-    def get_label(self, graph):
-        # TODO: add logic to label the data
-        # right now it returns 'normal' for everything
-        return self.labels[0]
+    def get_label(self, idx):
+        return self.labels[idx]
 
     def draw(self, n_graphs=3):
 
@@ -210,7 +296,7 @@ class GraphDataset(Dataset):
                 break
             count += 1
 
-            label = self.get_label(g)
+            label = 0 #self.get_label(g)
             title = f"{time_frame=}, {label=}"
 
             pos = nx.kamada_kawai_layout(g)
