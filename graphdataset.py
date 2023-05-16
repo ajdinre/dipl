@@ -8,6 +8,8 @@ import pandas as pd
 import networkx as nx
 
 ROLLING_AVG_COUNT = 5
+DEFAULT_LINE_COUNT = 5000
+DEFAULT_TIME_PERIOD = 30
 
 
 class GraphDataset(Dataset):
@@ -21,6 +23,7 @@ class GraphDataset(Dataset):
         "dst_ip",
         "dst_port",
         "protocol",
+        "label",
         "action",
     ]
     features_df_columns = [
@@ -45,9 +48,10 @@ class GraphDataset(Dataset):
         "is_chordal",
         "triangle_count",
         "is_connected",
+        "label"
     ]
 
-    def __init__(self, traffic_file):
+    def __init__(self, traffic_file, line_count=DEFAULT_LINE_COUNT, timeperiod=DEFAULT_TIME_PERIOD):
         self.traffic_file = traffic_file
 
         self.graphs = dict()
@@ -56,11 +60,9 @@ class GraphDataset(Dataset):
         
 
         with open(self.traffic_file, "r") as f:
-            # while True:
-            parse_count = 10000
-            for i in range(parse_count):
-                if i % 5000 == 0:
-                    print(f'parsing: {i}/{parse_count}')
+            for i in range(line_count):
+                if i % 1000 == 0:
+                    print(f'parsing: {i}/{line_count}')
 
                 line = f.readline()
                 if not line:
@@ -68,10 +70,11 @@ class GraphDataset(Dataset):
                 line = line.rstrip()
                 
 
-                self._add_to_graph(line)
-                self._add_to_dataframe(line)
+                self._add_to_graph(line, timeperiod)
+                self._add_to_dataframe(line, timeperiod)
 
         self._generate_features()
+        self._generate_label()
 
     def __len__(self):
         return len(self.graphs)
@@ -81,11 +84,11 @@ class GraphDataset(Dataset):
         label = 0 # self.get_label(graph)
         return graph, label
 
-    def _add_to_graph(self, line):
+    def _add_to_graph(self, line, timeperiod):
         time = line.split(",")[1]
         time = dt.strptime(time, self.input_time_format)
 
-        timeframe = self._get_timeframe(time, 30)  # 30 seconds
+        timeframe = self._get_timeframe(time, timeperiod)  # 30 seconds
         if timeframe not in self.graphs:
             self.graphs[timeframe] = nx.Graph()
 
@@ -95,9 +98,42 @@ class GraphDataset(Dataset):
         self.graphs[timeframe].add_node(dst_ip)
         self.graphs[timeframe].add_edge(src_ip, dst_ip)
 
+    def _add_to_dataframe(self, line, timeperiod):
+        time = line.split(",")[1]
+        time = dt.strptime(time, self.input_time_format)
+
+        timeframe = self._get_timeframe(time, timeperiod)  # 30 seconds
+
+        src_ip = self._get_source_ip(line)
+        src_port = self._get_source_port(line)
+        dst_ip = self._get_destination_ip(line)
+        dst_port = self._get_destination_port(line)
+        protocol = self._get_protocol(line)
+        label = self._get_label(line)
+        action = self._get_action(line)
+
+        row = [timeframe, src_ip, src_port, dst_ip, dst_port, protocol, label, action]
+        self.graph_df.loc[len(self.graph_df.index)] = row
+
+    def _generate_label(self):
+        timeframes = self.graph_df["timeframe"].unique()
+
+        for timeframe in timeframes:
+            curr_graph = self.graph_df.loc[self.graph_df["timeframe"] == timeframe]
+            labels = curr_graph["label"].unique()
+            #print(f'{timeframe=} {len(anomalous)=} {labels=}')
+
+            if "1" in labels:
+                #idx = int(timeframe)
+                print(self.features_df)
+                print(timeframe)
+                self.features_df.loc[self.features_df["timeframe"] == timeframe, 'label'] = 1
+            
+            
+
+
     def _generate_features(self):
         timeframes = self.graph_df["timeframe"].unique()
-        print(f'{timeframes}')
 
         for timeframe in timeframes:
             curr_graph = self.graph_df.loc[self.graph_df["timeframe"] == timeframe]
@@ -152,7 +188,13 @@ class GraphDataset(Dataset):
 
             dropped_sum = 0
             for i in range(lower_bound,  upper_bound):
-                curr_n_dropped = int(self.features_df.iloc[i]["n_dropped"])
+                #print(self.features_df)
+                #print(f'{lower_bound=} {upper_bound=}')
+                #print(f'{self.features_df=}')
+                try:
+                    curr_n_dropped = int(self.features_df.iloc[i]["n_dropped"])
+                except IndexError:
+                    curr_n_dropped = 0
                 dropped_sum += curr_n_dropped
 
             rolling_range = upper_bound - lower_bound
@@ -167,7 +209,10 @@ class GraphDataset(Dataset):
 
             accepted_sum = 0
             for i in range(lower_bound,  upper_bound):
-                curr_n_accepted = int(self.features_df.iloc[i]["n_accepted"])
+                try:
+                    curr_n_accepted = int(self.features_df.iloc[i]["n_accepted"])
+                except IndexError:
+                    curr_n_accepted = 0
                 accepted_sum += curr_n_accepted
 
             rolling_range = upper_bound - lower_bound
@@ -177,10 +222,10 @@ class GraphDataset(Dataset):
                 rolling_accepted = 0
 
             # intersection between this and last graph
-            if timeframe == 0:
-                last = nx.Graph()
-            else:
+            try:
                 last = self.graphs[timeframe - 1]
+            except KeyError:
+                last = nx.Graph()
             curr = self.graphs[timeframe]
 
             intersect = nx.intersection(last, curr)
@@ -208,6 +253,9 @@ class GraphDataset(Dataset):
             curr = self.graphs[timeframe]
             is_connected = float(nx.is_connected(curr))
 
+            # label placeholder
+            label = 0
+
 
             row = [
                 timeframe,
@@ -231,24 +279,9 @@ class GraphDataset(Dataset):
                 is_chordal,
                 triangle_count,
                 is_connected,
+                label
             ]
             self.features_df.loc[len(self.features_df.index)] = row
-
-    def _add_to_dataframe(self, line):
-        time = line.split(",")[1]
-        time = dt.strptime(time, self.input_time_format)
-
-        timeframe = self._get_timeframe(time, 30)  # 30 seconds
-
-        src_ip = self._get_source_ip(line)
-        src_port = self._get_source_port(line)
-        dst_ip = self._get_destination_ip(line)
-        dst_port = self._get_destination_port(line)
-        protocol = self._get_protocol(line)
-        action = self._get_action(line)
-
-        row = [timeframe, src_ip, src_port, dst_ip, dst_port, protocol, action]
-        self.graph_df.loc[len(self.graph_df.index)] = row
 
     def _get_timeframe(self, time, second_range):
         second_of_day = 0
@@ -271,6 +304,9 @@ class GraphDataset(Dataset):
 
     def _get_protocol(self, line):
         return line.split(",")[6]
+
+    def _get_label(self, line):
+        return line.split(",")[7]
 
     def _get_action(self, line):
         return line.split(",")[8]
