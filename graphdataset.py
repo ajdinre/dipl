@@ -125,8 +125,6 @@ class GraphDataset(Dataset):
 
             if "1" in labels:
                 #idx = int(timeframe)
-                print(self.features_df)
-                print(timeframe)
                 self.features_df.loc[self.features_df["timeframe"] == timeframe, 'label'] = 1
             
             
