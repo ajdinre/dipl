@@ -2,6 +2,8 @@ import os
 from datetime import datetime as dt
 import ipaddress
 
+import torch
+
 from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -80,9 +82,12 @@ class GraphDataset(Dataset):
         return len(self.graphs)
 
     def __getitem__(self, idx):
-        graph = self.graphs[idx]
-        label = 0 # self.get_label(graph)
-        return graph, label
+        features = self.features_df.iloc[idx, :-1]
+        features = torch.tensor(features.values)
+
+        label = self.features_df.iloc[idx, -1:]
+        label = torch.tensor(label.values)
+        return features, label
 
     def _add_to_graph(self, line, timeperiod):
         time = line.split(",")[1]
