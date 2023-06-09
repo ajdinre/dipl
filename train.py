@@ -3,7 +3,7 @@
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from model import Model1, DOModel, BNModel
+from models import ReLUFeedForwardNN
 from graphdataset import GraphDataset
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -15,7 +15,9 @@ dataset = GraphDataset(traffic_file=TRAFFIC_FILE)
 # Split the dataset into training and testing sets
 train_size = int(0.8 * len(dataset))
 test_size = len(dataset) - train_size
-train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+train_dataset, test_dataset = torch.utils.data.random_split(
+    dataset, [train_size, test_size]
+)
 
 # Define the data loaders
 batch_size = 16
@@ -26,8 +28,8 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 input_size = len(dataset.features_df_columns) - 1  # Exclude the label column
 hidden_size = 64
 output_size = 1  # Binary classification
-#model = Model1(input_size, hidden_size, output_size).to(device)
-model = BNModel(input_size, hidden_size, output_size).to(device)
+# model = Model1(input_size, hidden_size, output_size).to(device)
+model = ReLUFeedForwardNN(input_size, hidden_size, output_size).to(device)
 
 # Define the loss function and optimizer
 criterion = torch.nn.BCEWithLogitsLoss()
@@ -46,14 +48,14 @@ for epoch in range(num_epochs):
         optimizer.zero_grad()
 
         outputs = model(inputs.float())
-        #print(f"{outputs=}")
-        #print(f"{labels.float().unsqueeze(1)=}")
+        # print(f"{outputs=}")
+        # print(f"{labels.float().unsqueeze(1)=}")
         loss = criterion(outputs, labels.float())
         loss.backward()
         optimizer.step()
 
         running_loss += loss.item()
 
-    print(f'Epoch: {epoch + 1}, Loss: {running_loss / len(train_loader)}')
+    print(f"Epoch: {epoch + 1}, Loss: {running_loss / len(train_loader)}")
 
-print('Finished Training')
+print("Finished Training")

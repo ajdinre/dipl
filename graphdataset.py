@@ -10,7 +10,7 @@ import pandas as pd
 import networkx as nx
 
 ROLLING_AVG_COUNT = 5
-DEFAULT_LINE_COUNT = 5000
+DEFAULT_LINE_COUNT = 100000
 DEFAULT_TIME_PERIOD = 30
 
 
@@ -50,27 +50,30 @@ class GraphDataset(Dataset):
         "is_chordal",
         "triangle_count",
         "is_connected",
-        "label"
+        "label",
     ]
 
-    def __init__(self, traffic_file, line_count=DEFAULT_LINE_COUNT, timeperiod=DEFAULT_TIME_PERIOD):
+    def __init__(
+        self,
+        traffic_file,
+        line_count=DEFAULT_LINE_COUNT,
+        timeperiod=DEFAULT_TIME_PERIOD,
+    ):
         self.traffic_file = traffic_file
 
         self.graphs = dict()
         self.graph_df = pd.DataFrame(None, columns=self.graph_df_columns)
         self.features_df = pd.DataFrame(None, columns=self.features_df_columns)
-        
 
         with open(self.traffic_file, "r") as f:
             for i in range(line_count):
                 if i % 1000 == 0:
-                    print(f'parsing: {i}/{line_count}')
+                    print(f"parsing: {i}/{line_count}")
 
                 line = f.readline()
                 if not line:
                     break
                 line = line.rstrip()
-                
 
                 self._add_to_graph(line, timeperiod)
                 self._add_to_dataframe(line, timeperiod)
@@ -126,14 +129,13 @@ class GraphDataset(Dataset):
         for timeframe in timeframes:
             curr_graph = self.graph_df.loc[self.graph_df["timeframe"] == timeframe]
             labels = curr_graph["label"].unique()
-            #print(f'{timeframe=} {len(anomalous)=} {labels=}')
+            # print(f'{timeframe=} {len(anomalous)=} {labels=}')
 
             if "1" in labels:
-                #idx = int(timeframe)
-                self.features_df.loc[self.features_df["timeframe"] == timeframe, 'label'] = 1
-            
-            
-
+                # idx = int(timeframe)
+                self.features_df.loc[
+                    self.features_df["timeframe"] == timeframe, "label"
+                ] = 1
 
     def _generate_features(self):
         timeframes = self.graph_df["timeframe"].unique()
@@ -186,14 +188,18 @@ class GraphDataset(Dataset):
             n_icmps = len(icmps)
 
             # rolling avg of dropped connections
-            lower_bound = timeframe-ROLLING_AVG_COUNT if timeframe-ROLLING_AVG_COUNT > 0 else 0
+            lower_bound = (
+                timeframe - ROLLING_AVG_COUNT
+                if timeframe - ROLLING_AVG_COUNT > 0
+                else 0
+            )
             upper_bound = timeframe
 
             dropped_sum = 0
-            for i in range(lower_bound,  upper_bound):
-                #print(self.features_df)
-                #print(f'{lower_bound=} {upper_bound=}')
-                #print(f'{self.features_df=}')
+            for i in range(lower_bound, upper_bound):
+                # print(self.features_df)
+                # print(f'{lower_bound=} {upper_bound=}')
+                # print(f'{self.features_df=}')
                 try:
                     curr_n_dropped = int(self.features_df.iloc[i]["n_dropped"])
                 except IndexError:
@@ -207,11 +213,15 @@ class GraphDataset(Dataset):
                 rolling_dropped = 0
 
             # rolling avg of accepted connections
-            lower_bound = timeframe-ROLLING_AVG_COUNT if timeframe-ROLLING_AVG_COUNT > 0 else 0
+            lower_bound = (
+                timeframe - ROLLING_AVG_COUNT
+                if timeframe - ROLLING_AVG_COUNT > 0
+                else 0
+            )
             upper_bound = timeframe
 
             accepted_sum = 0
-            for i in range(lower_bound,  upper_bound):
+            for i in range(lower_bound, upper_bound):
                 try:
                     curr_n_accepted = int(self.features_df.iloc[i]["n_accepted"])
                 except IndexError:
@@ -259,7 +269,6 @@ class GraphDataset(Dataset):
             # label placeholder
             label = 0
 
-
             row = [
                 timeframe,
                 n_unique_ips,
@@ -282,7 +291,7 @@ class GraphDataset(Dataset):
                 is_chordal,
                 triangle_count,
                 is_connected,
-                label
+                label,
             ]
             self.features_df.loc[len(self.features_df.index)] = row
 
@@ -335,7 +344,7 @@ class GraphDataset(Dataset):
                 break
             count += 1
 
-            label = 0 #self.get_label(g)
+            label = 0  # self.get_label(g)
             title = f"{time_frame=}, {label=}"
 
             pos = nx.kamada_kawai_layout(g)
