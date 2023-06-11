@@ -1,61 +1,66 @@
-# train.py
-
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from models import ReLUFeedForwardNN
 from graphdataset import GraphDataset
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def load_data(traffic_file, split_ratio=0.8, batch_size=16):
+    dataset = GraphDataset(traffic_file=traffic_file)
+    train_size = int(split_ratio * len(dataset))
+    test_size = len(dataset) - train_size
+    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    return train_loader, test_loader, len(dataset.features_df_columns)
 
-# Load your dataset
-TRAFFIC_FILE = "./data2/hops_12_nmap1_20000.csv"
-dataset = GraphDataset(traffic_file=TRAFFIC_FILE)
+def create_model(model_type, input_size, hidden_size=64, output_size=1, device="cpu"):
+    model = model_type(input_size, hidden_size, output_size).to(device)
+    return model
 
-# Split the dataset into training and testing sets
-train_size = int(0.8 * len(dataset))
-test_size = len(dataset) - train_size
-train_dataset, test_dataset = torch.utils.data.random_split(
-    dataset, [train_size, test_size]
-)
+def get_loss_and_optim(model, learning_rate=0.01):
+    criterion = torch.nn.BCEWithLogitsLoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    return criterion, optimizer
 
-# Define the data loaders
-batch_size = 16
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+def calculate_accuracy(outputs, labels):
+    with torch.no_grad():
+        pred = torch.round(torch.sigmoid(outputs))  # sigmoid and round to get binary predictions
+    correct = (pred == labels).float()  # compare predictions to true label
+    acc = correct.sum() / len(correct)
+    return acc
 
-# Instantiate the model
-input_size = len(dataset.features_df_columns) - 1  # Exclude the label column
-hidden_size = 64
-output_size = 1  # Binary classification
-# model = Model1(input_size, hidden_size, output_size).to(device)
-model = ReLUFeedForwardNN(input_size, hidden_size, output_size).to(device)
+def train_model(model, criterion, optimizer, train_loader, device="cpu", num_epochs=10):
+    for epoch in range(num_epochs):
+        running_loss = 0.0
+        running_acc = 0.0
+        for i, data in enumerate(train_loader, 0):
+            inputs, labels = data
+            inputs, labels = inputs.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(inputs.float())
+            loss = criterion(outputs, labels.float())
+            loss.backward()
+            optimizer.step()
+            acc = calculate_accuracy(outputs, labels)
+            running_loss += loss.item()
+            running_acc += acc.item()
+        avg_loss = running_loss / len(train_loader)
+        avg_acc = running_acc / len(train_loader)
+        print(f"Epoch: {epoch + 1}, Loss: {avg_loss:.5f}, Accuracy: {avg_acc:.5f}")
 
-# Define the loss function and optimizer
-criterion = torch.nn.BCEWithLogitsLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.01)
+    print("Finished Training")
 
-# Number of training epochs
-num_epochs = 10
 
-# Training loop
-for epoch in range(num_epochs):
-    running_loss = 0.0
-    for i, data in enumerate(train_loader, 0):
-        inputs, labels = data
-        inputs, labels = inputs.to(device), labels.to(device)
+def main():
+    model_type = ReLUFeedForwardNN
 
-        optimizer.zero_grad()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    traffic_file = "./data2/hops_12_nmap1_20000.csv"
+    train_loader, test_loader, input_size = load_data(traffic_file)
+    input_size -= 1  # Exclude the label column
+    model = create_model(model_type, input_size, device=device)
+    criterion, optimizer = get_loss_and_optim(model)
+    train_model(model, criterion, optimizer, train_loader, device=device)
 
-        outputs = model(inputs.float())
-        # print(f"{outputs=}")
-        # print(f"{labels.float().unsqueeze(1)=}")
-        loss = criterion(outputs, labels.float())
-        loss.backward()
-        optimizer.step()
-
-        running_loss += loss.item()
-
-    print(f"Epoch: {epoch + 1}, Loss: {running_loss / len(train_loader)}")
-
-print("Finished Training")
+if __name__ == "__main__":
+    main()
