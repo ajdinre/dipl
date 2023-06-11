@@ -83,9 +83,9 @@ class BatchNormFeedForwardNN(nn.Module):
         return out
 
 
-class SimpleCNN(nn.Module):
+class CNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
-        super(SimpleCNN, self).__init__()
+        super(CNN, self).__init__()
         
         self.conv1 = nn.Conv1d(input_size, hidden_size, kernel_size=3, padding=1)
         self.conv2 = nn.Conv1d(hidden_size, hidden_size, kernel_size=3, padding=1)
@@ -105,9 +105,9 @@ class SimpleCNN(nn.Module):
         return out
 
 
-class SimpleRNN(nn.Module):
+class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, num_layers=16):
-        super(SimpleRNN, self).__init__()
+        super(RNN, self).__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
 
