@@ -10,7 +10,7 @@ import pandas as pd
 import networkx as nx
 
 ROLLING_AVG_COUNT = 5
-DEFAULT_LINE_COUNT = 100000
+DEFAULT_LINE_COUNT = 19000
 DEFAULT_TIME_PERIOD = 30
 
 

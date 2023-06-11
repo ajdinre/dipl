@@ -139,3 +139,43 @@ class TransformerClassifier(nn.Module):
         #print(f'{out.shape=}')
         out = self.classifier(out)  # You might want to feed only the last output of your sequence into the classifier
         return out
+
+
+class LSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, num_layers=16):
+        super(LSTM, self).__init__()
+        self.num_layers = num_layers
+        self.hidden_size = hidden_size
+
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        x = x.unsqueeze(0) # add dim
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)  # Initialize hidden state
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)  # Initialize cell state
+        out, _ = self.lstm(x, (h0, c0))
+        out = self.fc(out)
+        out = out.squeeze(0) # rm dim
+        return out
+
+
+
+class ResNet(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(ResNet, self).__init__()
+        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc3 = nn.Linear(hidden_size, output_size)
+        self.shortcut = nn.Linear(input_size, hidden_size)  # A shortcut connection that changes the dimension
+
+
+    def forward(self, x):
+        identity = self.shortcut(x)  # Use the shortcut connection to change the dimension of the input
+        out = F.relu(self.fc1(x))
+        out = self.fc2(out)
+        out += identity  # Now these should be able to be added together
+        out = F.relu(out)
+        out = self.fc3(out)
+        return out
+
