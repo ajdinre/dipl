@@ -1,6 +1,9 @@
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from sklearn.metrics import f1_score, fbeta_score
+
+
 from models import ReLUFeedForwardNN
 from graphdataset import GraphDataset
 
@@ -29,10 +32,25 @@ def calculate_accuracy(outputs, labels):
     acc = correct.sum() / len(correct)
     return acc
 
+def calculate_f_scores(outputs, labels):
+    with torch.no_grad():
+        pred = torch.round(torch.sigmoid(outputs))  # sigmoid and round to get binary predictions
+    pred = pred.cpu().numpy()
+    labels = labels.cpu().numpy()
+    
+    f1 = f1_score(labels, pred, average='micro')  # calculate f1 score
+    f2 = fbeta_score(labels, pred, beta=2, average='micro')  # calculate f2 score
+
+    return f1, f2
+
+
 def train_model(model, criterion, optimizer, train_loader, device="cpu", num_epochs=10):
     for epoch in range(num_epochs):
         running_loss = 0.0
         running_acc = 0.0
+        running_f1 = 0.0
+        running_f2 = 0.0
+
         for i, data in enumerate(train_loader, 0):
             inputs, labels = data
             inputs, labels = inputs.to(device), labels.to(device)
@@ -42,13 +60,22 @@ def train_model(model, criterion, optimizer, train_loader, device="cpu", num_epo
             loss.backward()
             optimizer.step()
             acc = calculate_accuracy(outputs, labels)
+            f1, f2 = calculate_f_scores(outputs, labels)
+
             running_loss += loss.item()
             running_acc += acc.item()
+            running_f1 += f1
+            running_f2 += f2
+
         avg_loss = running_loss / len(train_loader)
         avg_acc = running_acc / len(train_loader)
-        print(f"Epoch: {epoch + 1}, Loss: {avg_loss:.5f}, Accuracy: {avg_acc:.5f}")
+        avg_f1 = running_f1 / len(train_loader)
+        avg_f2 = running_f2 / len(train_loader)
+
+        print(f"Epoch: {epoch + 1}, Loss: {avg_loss:.5f}, Accuracy: {avg_acc:.5f}, F1: {avg_f1:.5f}, F2: {avg_f2:.5f}")
 
     print("Finished Training")
+
 
 
 def main():
