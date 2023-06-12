@@ -10,7 +10,7 @@ import pandas as pd
 import networkx as nx
 
 ROLLING_AVG_COUNT = 5
-DEFAULT_LINE_COUNT = 19000
+DEFAULT_LINE_COUNT = 5000
 DEFAULT_TIME_PERIOD = 30
 
 
@@ -55,6 +55,8 @@ class GraphDataset(Dataset):
         "constraint_min",
         "effective_size_max",
         "effective_size_min",
+        "pagerank_max",
+        "pagerank_min",
         "label",
     ]
 
@@ -287,6 +289,13 @@ class GraphDataset(Dataset):
             effective_size_max = max(effective_sizes.values())
             effective_size_min = min(effective_sizes.values())
 
+
+            # page rank
+            curr = self.graphs[timeframe]
+            pageranks = nx.pagerank(curr)
+            pagerank_max = max(pageranks.values())
+            pagerank_min = min(pageranks.values())
+
             # label placeholder
             label = 0
 
@@ -317,6 +326,8 @@ class GraphDataset(Dataset):
                 constraint_min,
                 effective_size_max,
                 effective_size_min,
+                pagerank_max,
+                pagerank_min,
                 label,
             ]
             self.features_df.loc[len(self.features_df.index)] = row
