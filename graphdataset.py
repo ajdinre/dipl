@@ -50,6 +50,11 @@ class GraphDataset(Dataset):
         "is_chordal",
         "triangle_count",
         "is_connected",
+        "s_metric",
+        "constraint_max",
+        "constraint_min",
+        "effective_size_max",
+        "effective_size_min",
         "label",
     ]
 
@@ -266,6 +271,22 @@ class GraphDataset(Dataset):
             curr = self.graphs[timeframe]
             is_connected = float(nx.is_connected(curr))
 
+            # s_metric
+            curr = self.graphs[timeframe]
+            s_metric = nx.s_metric(curr, normalized=False) # normalization is not implemented
+
+            # constraints
+            curr = self.graphs[timeframe]
+            constraints = nx.constraint(curr)
+            constraint_max = max(constraints.values())
+            constraint_min = min(constraints.values())
+
+            # effective size
+            curr = self.graphs[timeframe]
+            effective_sizes = nx.effective_size(curr)
+            effective_size_max = max(effective_sizes.values())
+            effective_size_min = min(effective_sizes.values())
+
             # label placeholder
             label = 0
 
@@ -291,6 +312,11 @@ class GraphDataset(Dataset):
                 is_chordal,
                 triangle_count,
                 is_connected,
+                s_metric,
+                constraint_max,
+                constraint_min,
+                effective_size_max,
+                effective_size_min,
                 label,
             ]
             self.features_df.loc[len(self.features_df.index)] = row
