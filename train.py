@@ -1,14 +1,30 @@
+import argparse
+import time
+
+
+
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score, fbeta_score
 
 
-from models import ReLUFeedForwardNN
+from models import (
+    ReLUFeedForwardNN,
+    DropoutFeedForwardNN,
+    ThreeLayerDropoutNN,
+    BatchNormFeedForwardNN,
+    CNN,
+    RNN,
+    TransformerClassifier,
+    LSTM,
+    ResNet,
+)
+
 from graphdataset import GraphDataset
 
 def load_data(traffic_file, split_ratio=0.8, batch_size=16):
-    dataset = GraphDataset(traffic_file=traffic_file)
+    dataset = GraphDataset(traffic_file=traffic_file, timeperiod=120)
     train_size = int(split_ratio * len(dataset))
     test_size = len(dataset) - train_size
     train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
@@ -28,23 +44,27 @@ def get_loss_and_optim(model, learning_rate=0.01):
 def calculate_accuracy(outputs, labels):
     with torch.no_grad():
         pred = torch.round(torch.sigmoid(outputs))  # sigmoid and round to get binary predictions
-    correct = (pred == labels).float()  # compare predictions to true label
-    acc = correct.sum() / len(correct)
+        correct = (pred == labels).float()  # compare predictions to true label
+        acc = correct.sum() / len(correct)
     return acc
 
 def calculate_f_scores(outputs, labels):
     with torch.no_grad():
         pred = torch.round(torch.sigmoid(outputs))  # sigmoid and round to get binary predictions
-    pred = pred.cpu().numpy()
-    labels = labels.cpu().numpy()
+        pred = pred.numpy()
+        labels = labels.numpy()
     
-    f1 = f1_score(labels, pred, average='micro')  # calculate f1 score
-    f2 = fbeta_score(labels, pred, beta=2, average='micro')  # calculate f2 score
+        f1 = f1_score(labels, pred, average='macro')  # calculate f1 score
+        f2 = fbeta_score(labels, pred, beta=2, average='macro')  # calculate f2 score
 
     return f1, f2
 
 
 def train_model(model, criterion, optimizer, train_loader, device="cpu", num_epochs=10):
+    print(f" [T] Training started on model: {str(model.__class__)}")
+    start_time = time.time()
+
+    losses, accs, f1s, f2s = {}, {}, {}, {}
     for epoch in range(num_epochs):
         running_loss = 0.0
         running_acc = 0.0
@@ -72,17 +92,35 @@ def train_model(model, criterion, optimizer, train_loader, device="cpu", num_epo
         avg_f1 = running_f1 / len(train_loader)
         avg_f2 = running_f2 / len(train_loader)
 
+        losses[epoch] = avg_loss
+        accs[epoch] = avg_acc
+        f1s[epoch] = avg_f1
+        f2s[epoch] = avg_f2
+
         print(f"Epoch: {epoch + 1}, Loss: {avg_loss:.5f}, Accuracy: {avg_acc:.5f}, F1: {avg_f1:.5f}, F2: {avg_f2:.5f}")
 
-    print("Finished Training")
+    end_time = time.time()
+    execution_time = end_time - start_time
+
+    print(f" [T] Training finished in {execution_time}")
+
+    return losses, accs, f1s, f2s
+
 
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Script for training a model.')
+    parser.add_argument('--model', type=int)
+    parser.add_argument('--traffic_dataset', type=int)
+
+
     model_type = ReLUFeedForwardNN
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    traffic_file = "./data2/hops_12_nmap1_20000.csv"
+    traffic_file = "./data2/hops_12_nmap1_20000_sorted.csv"
+
+
     train_loader, test_loader, input_size = load_data(traffic_file)
     input_size -= 1  # Exclude the label column
     model = create_model(model_type, input_size, device=device)

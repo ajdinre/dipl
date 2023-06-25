@@ -1,6 +1,7 @@
 import os
 from datetime import datetime as dt
 import ipaddress
+import time
 
 import torch
 
@@ -10,7 +11,6 @@ import pandas as pd
 import networkx as nx
 
 ROLLING_AVG_COUNT = 5
-DEFAULT_LINE_COUNT = 5000
 DEFAULT_TIME_PERIOD = 30
 
 
@@ -63,7 +63,6 @@ class GraphDataset(Dataset):
     def __init__(
         self,
         traffic_file,
-        line_count=DEFAULT_LINE_COUNT,
         timeperiod=DEFAULT_TIME_PERIOD,
     ):
         self.traffic_file = traffic_file
@@ -72,10 +71,15 @@ class GraphDataset(Dataset):
         self.graph_df = pd.DataFrame(None, columns=self.graph_df_columns)
         self.features_df = pd.DataFrame(None, columns=self.features_df_columns)
 
+        i = 0
+        start_time = time.time()
+        print(' [i] Started parsing...')
         with open(self.traffic_file, "r") as f:
-            for i in range(line_count):
+            while True:
+                i += 1
                 if i % 1000 == 0:
-                    print(f"parsing: {i}/{line_count}")
+                    print(f" [*] {i} lines read")
+
 
                 line = f.readline()
                 if not line:
@@ -84,8 +88,18 @@ class GraphDataset(Dataset):
 
                 self._add_to_graph(line, timeperiod)
                 self._add_to_dataframe(line, timeperiod)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f' [i] Parsing finished in {execution_time}')
 
+
+        start_time = time.time()
+        print(f' [i] Generatin Features started...')
         self._generate_features()
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f' [i] Generatin Features finished in {execution_time}')
+
         self._generate_label()
 
     def __len__(self):
@@ -146,8 +160,10 @@ class GraphDataset(Dataset):
 
     def _generate_features(self):
         timeframes = self.graph_df["timeframe"].unique()
+        total_timeframes = len(timeframes)
 
         for timeframe in timeframes:
+            print(f' [*] generating features for {timeframe}, total:{total_timeframes}')
             curr_graph = self.graph_df.loc[self.graph_df["timeframe"] == timeframe]
 
             # unique ips
@@ -337,7 +353,7 @@ class GraphDataset(Dataset):
         second_of_day += time.second
         second_of_day += time.minute * 60
         second_of_day += time.hour * 60 * 60
-        return second_of_day % second_range
+        return int(second_of_day // second_range)
 
     def _get_source_ip(self, line):
         return line.split(",")[2]
